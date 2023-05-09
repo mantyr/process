@@ -15,9 +15,17 @@ func init() {
 }
 
 type Process interface {
+	// SetContext устанавливает контекст процесса, используется для метода Run
+	SetContext(config Context) Process
+
 	// Run отправляет заявку на запуск процесса и не дожидается запуска
 	// Что бы дождаться запуска процесса воспользуйтесь дополнительными средствами синхранизации
 	Run(ctx context.Context) error
+
+	// RunWithContext отправляет заявку на запуск процесса и не дожидается запуска
+	// Игнорирует ранее установленный контекст и использует контекст который передан при вызове данного метода
+	// Что бы дождаться запуска процесса воспользуйтесь дополнительными средствами синхранизации
+	RunWithContext(ctx context.Context, config Context) error
 
 	// Stop отправляет заявку на завершение процесса и не дожидается завершения
 	// Что бы дождаться завершения используйте связку Stop и Done
@@ -31,10 +39,9 @@ type Process interface {
 	Done() <-chan struct{}
 }
 
-func NewProcess(config Context) Process {
+func NewProcess() Process {
 	return &process{
-		context: config,
-		status:  NotRunning,
+		status: NotRunning,
 	}
 }
 
@@ -83,8 +90,19 @@ const (
 
 type Status string
 
-// Run запускает процесс ассинхронно, что бы понять удалось ли запустить процесс или нет - воспользуйтесь Wait и Status
+func (p *process) SetContext(config Context) Process {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.context = config
+	return p
+}
+
 func (p *process) Run(ctx context.Context) error {
+	return p.RunWithContext(ctx, p.context)
+}
+
+// Run запускает процесс ассинхронно, что бы понять удалось ли запустить процесс или нет - воспользуйтесь Wait и Status
+func (p *process) RunWithContext(ctx context.Context, config Context) error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
@@ -101,7 +119,7 @@ func (p *process) Run(ctx context.Context) error {
 		p.status = Up
 		p.job.cancelFunc = cancelFunc
 		p.subscribers.context, p.subscribers.cancelFunc = context.WithCancel(context.Background())
-		go p.run(jobContext, p.context)
+		go p.run(jobContext, config)
 		return nil
 	default:
 		return errors.New("unexpected process status")

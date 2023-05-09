@@ -7,11 +7,11 @@ import (
 )
 
 type Context struct {
-	dir    string
-	name   string
-	argv   []string
-	env    map[string]string
-	stdin  struct {
+	dir   string
+	name  string
+	argv  []string
+	env   map[string]string
+	stdin struct {
 		r *os.File
 		w *os.File
 	}
@@ -120,8 +120,8 @@ func (c *Context) StartProcess() (*os.Process, error) {
 		return nil, err
 	}
 	attr := &os.ProcAttr{
-		Dir: c.dir,
-		Env: c.GetEnvs(),
+		Dir:   c.dir,
+		Env:   c.GetEnvs(),
 		Files: []*os.File{c.stdin.r, c.stdout.w, c.stderr.w},
 	}
 	return os.StartProcess(path, c.argv, attr)

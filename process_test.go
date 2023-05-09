@@ -1,11 +1,11 @@
 package process
 
 import (
+	"bytes"
+	"context"
 	"io"
 	"testing"
 	"time"
-	"bytes"
-	"context"
 
 	. "github.com/smartystreets/goconvey/convey" //nolint:golint,stylecheck
 )
@@ -27,17 +27,18 @@ func TestProcess(t *testing.T) {
 
 		Convey("Test1 - Run", func() {
 			config.SetCommand("./main test1")
-			pr := NewProcess(*config)
+			pr := NewProcess()
+			pr.SetContext(*config)
 			So(pr.Status(), ShouldEqual, NotRunning)
 			So(pr.Run(context.Background()), ShouldBeNil)
 
-			ctx, cancelFunc := context.WithTimeout(context.Background(), 10 * time.Second)
+			ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancelFunc()
 
 			running := false
 			for {
 				select {
-				case <- ctx.Done():
+				case <-ctx.Done():
 					break
 				default:
 				}
@@ -52,14 +53,14 @@ func TestProcess(t *testing.T) {
 			Convey("Stop", func() {
 				So(pr.Status(), ShouldEqual, Running)
 				So(pr.Stop(context.Background()), ShouldBeNil)
-				
-				ctx, cancelFunc := context.WithTimeout(context.Background(), 10 * time.Second)
+
+				ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancelFunc()
 
 				notRunning := false
 				for {
 					select {
-					case <- ctx.Done():
+					case <-ctx.Done():
 						break
 					default:
 					}
