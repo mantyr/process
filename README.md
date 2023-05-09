@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/mantyr/process?v=1)][goreport]
 [![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE.md)
 
-This is the stable version.
+This is not a stable version.
 
 ## Description
 
