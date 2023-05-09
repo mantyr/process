@@ -31,27 +31,18 @@ type Process interface {
 	Done() <-chan struct{}
 }
 
-func New(name string, argv []string, attr *os.ProcAttr) (Process, error) {
-	switch {
-	case name == "":
-		return nil, errors.New("empty process name")
-	case len(argv) == 0:
-		return nil, errors.New("empty process argv")
-	}
+func NewProcess(config Context) Process {
 	return &process{
-		name:   name,
-		argv:   argv,
-		attr:   attr,
-		status: NotRunning,
-	}, nil
+		context: config,
+		status:  NotRunning,
+	}
 }
 
 type process struct {
 	mutex sync.RWMutex
 
-	name string
-	argv []string
-	attr *os.ProcAttr
+	// context это настройки для запуска процесса операционной системы
+	context Context
 
 	// status это статус процесса по принципу state-machine
 	status Status
@@ -107,23 +98,10 @@ func (p *process) Run(ctx context.Context) error {
 		// можно дождаться завершения и запустить повторно
 	case NotRunning:
 		jobContext, cancelFunc := context.WithCancel(ctx)
-
-		name := p.name
-		argv := p.argv
-		var attr *os.ProcAttr
-		if p.attr != nil {
-			attr = &os.ProcAttr{}
-			attr.Dir = p.attr.Dir
-			attr.Env = p.attr.Env
-			attr.Files = make([]*os.File, 0, len(p.attr.Files))
-			for _, file := range p.attr.Files {
-				attr.Files = append(attr.Files, file)
-			}
-		}
 		p.status = Up
 		p.job.cancelFunc = cancelFunc
 		p.subscribers.context, p.subscribers.cancelFunc = context.WithCancel(context.Background())
-		go p.run(jobContext, name, argv, attr)
+		go p.run(jobContext, p.context)
 		return nil
 	default:
 		return errors.New("unexpected process status")
@@ -176,7 +154,7 @@ func (p *process) Stop(ctx context.Context) error {
 	}
 }
 
-func (p *process) run(ctx context.Context, name string, argv []string, attr *os.ProcAttr) {
+func (p *process) run(ctx context.Context, config Context) {
 	defer p.subscribers.cancelFunc()
 	select {
 	case <-ctx.Done():
@@ -187,7 +165,7 @@ func (p *process) run(ctx context.Context, name string, argv []string, attr *os.
 	default:
 	}
 
-	process, err := os.StartProcess(name, argv, attr)
+	process, err := config.StartProcess()
 
 	p.mutex.Lock()
 	{

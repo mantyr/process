@@ -9,7 +9,7 @@ type Environment interface {
 	SetDir(dir string) Environment
 	SetEnv(key, value string) Environment
 	GetEnvs() []string
-	PlaceholderEnv(key string) string
+	GetEnv(key string) string
 
 	RunCommand(ctx context.Context, cmd string) ([]byte, error)
 }
