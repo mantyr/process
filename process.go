@@ -72,6 +72,11 @@ type process struct {
 	// status это статус процесса по принципу state-machine
 	status Status
 
+	// restart это флаг который позволяет перезапустить процесс после завершения текущего сеанса если мы попытались запустить процесс когда он выключался
+	restart        bool
+	restartContext context.Context
+	restartConfig  Context
+
 	job struct {
 		// cancelFunc это функция для закрытия контекста процесса операционной системы
 		cancelFunc context.CancelFunc
@@ -140,8 +145,10 @@ func (p *process) RunWithContext(ctx context.Context, config Context) error {
 	case Running:
 		return nil
 	case Down:
+		p.restart = true // запустить повторно когда текущий сеанс закончится
+		p.restartContext = ctx
+		p.restartConfig = config
 		return errors.New("down")
-		// можно дождаться завершения и запустить повторно
 	case NotRunning:
 		jobContext, cancelFunc := context.WithCancel(ctx)
 		p.setStatus(Up)
@@ -160,6 +167,7 @@ func (p *process) Status() Status {
 	return p.status
 }
 
+// Done позволяет дождаться остановки процесса
 func (p *process) Done() <-chan struct{} {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
@@ -181,6 +189,9 @@ func (p *process) Stop(ctx context.Context) error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
+	p.restart = false // исключаем возможность рестарта
+	p.restartContext = nil
+	p.restartConfig = Context{}
 	switch p.status {
 	case Up:
 		p.setStatus(Down)
@@ -233,12 +244,35 @@ func (p *process) run(ctx context.Context, config Context) {
 	if err != nil {
 		p.mutex.Lock()
 		p.setStatus(NotRunning)
+
+		if p.restart {
+			jobContext, cancelFunc := context.WithCancel(p.restartContext)
+			p.setStatus(Up)
+			p.job.cancelFunc = cancelFunc
+			p.subscribers.context, p.subscribers.cancelFunc = context.WithCancel(context.Background())
+			go p.run(jobContext, p.restartConfig)
+
+			p.restart = false
+			p.restartContext = nil
+			p.restartConfig = Context{}
+		}
 		p.mutex.Unlock()
 		return
 	}
 	p.mutex.Lock()
 	p.setStatus(NotRunning)
 	p.processState = state
+	if p.restart {
+		jobContext, cancelFunc := context.WithCancel(p.restartContext)
+		p.setStatus(Up)
+		p.job.cancelFunc = cancelFunc
+		p.subscribers.context, p.subscribers.cancelFunc = context.WithCancel(context.Background())
+		go p.run(jobContext, p.restartConfig)
+
+		p.restart = false
+		p.restartContext = nil
+		p.restartConfig = Context{}
+	}
 	p.mutex.Unlock()
 	return
 }
