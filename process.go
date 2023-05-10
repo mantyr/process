@@ -45,8 +45,26 @@ func NewProcess() Process {
 	}
 }
 
+type Collector interface {
+	SendStatus(externalID string, status Status)
+}
+
+func (p *process) setStatus(status Status) {
+	p.status = status
+	if p.collector == nil {
+		return
+	}
+	p.collector.SendStatus(p.externalID, status)
+}
+
 type process struct {
 	mutex sync.RWMutex
+
+	// externalID это внешний идентификатор для процесса
+	externalID string
+
+	// collector это внешний механизм для регистрации статуса процесса
+	collector Collector
 
 	// context это настройки для запуска процесса операционной системы
 	context Context
@@ -90,6 +108,16 @@ const (
 
 type Status string
 
+func (p *process) SetExternalID(externalID string) Process {
+	p.externalID = externalID
+	return p
+}
+
+func (p *process) SetCollector(collector Collector) Process {
+	p.collector = collector
+	return p
+}
+
 func (p *process) SetContext(config Context) Process {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
@@ -116,7 +144,7 @@ func (p *process) RunWithContext(ctx context.Context, config Context) error {
 		// можно дождаться завершения и запустить повторно
 	case NotRunning:
 		jobContext, cancelFunc := context.WithCancel(ctx)
-		p.status = Up
+		p.setStatus(Up)
 		p.job.cancelFunc = cancelFunc
 		p.subscribers.context, p.subscribers.cancelFunc = context.WithCancel(context.Background())
 		go p.run(jobContext, config)
@@ -155,11 +183,11 @@ func (p *process) Stop(ctx context.Context) error {
 
 	switch p.status {
 	case Up:
-		p.status = Down
+		p.setStatus(Down)
 		go p.job.cancelFunc()
 		return nil
 	case Running:
-		p.status = Down
+		p.setStatus(Down)
 		go p.job.cancelFunc()
 		return nil
 	case Down:
@@ -177,7 +205,7 @@ func (p *process) run(ctx context.Context, config Context) {
 	select {
 	case <-ctx.Done():
 		p.mutex.Lock()
-		p.status = NotRunning
+		p.setStatus(NotRunning)
 		p.mutex.Unlock()
 		return
 	default:
@@ -188,9 +216,9 @@ func (p *process) run(ctx context.Context, config Context) {
 	p.mutex.Lock()
 	{
 		if err != nil {
-			p.status = NotRunning
+			p.setStatus(NotRunning)
 		} else {
-			p.status = Running
+			p.setStatus(Running)
 			p.processPid = process.Pid
 		}
 	}
@@ -204,12 +232,12 @@ func (p *process) run(ctx context.Context, config Context) {
 	state, err := process.Wait()
 	if err != nil {
 		p.mutex.Lock()
-		p.status = NotRunning
+		p.setStatus(NotRunning)
 		p.mutex.Unlock()
 		return
 	}
 	p.mutex.Lock()
-	p.status = NotRunning
+	p.setStatus(NotRunning)
 	p.processState = state
 	p.mutex.Unlock()
 	return
