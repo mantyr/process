@@ -195,11 +195,11 @@ func (p *process) Stop(ctx context.Context) error {
 	switch p.status {
 	case Up:
 		p.setStatus(Down)
-		go p.job.cancelFunc()
+		p.job.cancelFunc()
 		return nil
 	case Running:
 		p.setStatus(Down)
-		go p.job.cancelFunc()
+		p.job.cancelFunc()
 		return nil
 	case Down:
 		return nil
